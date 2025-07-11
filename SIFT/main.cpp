@@ -2,6 +2,7 @@
 #include <iostream>
 #include <vector>
 #include <cmath>
+#include <iomanip>
 
 using namespace cv;
 using namespace std;
@@ -155,48 +156,92 @@ vector<float> extractDescriptor(const Mat& img, int x, int y, float orientation,
 
 
 
-// ---------- MAIN ----------
-int main() {
-    VideoCapture cap(0, cv::CAP_V4L2);
-    cap.set(CAP_PROP_FRAME_WIDTH, 640);
-    cap.set(CAP_PROP_FRAME_HEIGHT, 480);
-    cap.set(CAP_PROP_BUFFERSIZE, 1);
+// // ---------- MAIN ----------
+// int main() {
+//     VideoCapture cap(0, cv::CAP_V4L2);
+//     cap.set(CAP_PROP_FRAME_WIDTH, 640);
+//     cap.set(CAP_PROP_FRAME_HEIGHT, 480);
+//     cap.set(CAP_PROP_BUFFERSIZE, 1);
 
-    if (!cap.isOpened()) {
-        cerr << "Cannot open camera!" << endl;
+//     if (!cap.isOpened()) {
+//         cerr << "Cannot open camera!" << endl;
+//         return -1;
+//     }
+
+//     Mat frame, gray;
+//     while (true) {
+//         cap >> frame;
+//         if (frame.empty()) break;
+
+//         cvtColor(frame, gray, COLOR_BGR2GRAY);
+//         resize(gray, gray, Size(320, 240));
+//         gray.convertTo(gray, CV_32F, 1.0 / 255.0);
+
+//         auto scale_space = generateScaleSpace(gray);
+//         auto dogs = computeDoG(scale_space);
+//         auto keypoints = findKeypoints(dogs);
+
+//         Mat vis;
+//         gray.convertTo(vis, CV_8U, 255.0);
+//         cvtColor(vis, vis, COLOR_GRAY2BGR);
+
+//         for (const auto& pt : keypoints) {
+//             float angle = computeOrientation(scale_space[2], pt.x, pt.y);
+//             auto desc = extractDescriptor(scale_space[2], pt.x, pt.y, angle);
+//             if (!desc.empty()) {
+//                 circle(vis, pt, 2, Scalar(0, 0, 255), -1);
+//             }
+//         }
+
+//         imshow("SIFT Keypoints", vis);
+//         if (waitKey(1) == 27) break; // ESC to exit
+//     }
+
+//     cap.release();
+//     destroyAllWindows();
+//     return 0;
+// }
+
+int main() {
+    cv::Mat image = cv::imread("../Test/download.jpg");
+    cv::Mat gray;
+
+    if (image.empty()) {
+        std::cerr << "Image not found!" << std::endl;
         return -1;
     }
 
-    Mat frame, gray;
-    while (true) {
-        cap >> frame;
-        if (frame.empty()) break;
+    cv::cvtColor(image, gray, cv::COLOR_BGR2GRAY);
+    cv::resize(gray, gray, cv::Size(320, 240));
+    gray.convertTo(gray, CV_32F, 1.0 / 255.0);
 
-        cvtColor(frame, gray, COLOR_BGR2GRAY);
-        resize(gray, gray, Size(320, 240));
-        gray.convertTo(gray, CV_32F, 1.0 / 255.0);
+    auto scale_space = generateScaleSpace(gray);
+    auto dogs = computeDoG(scale_space);
+    auto keypoints = findKeypoints(dogs);
 
-        auto scale_space = generateScaleSpace(gray);
-        auto dogs = computeDoG(scale_space);
-        auto keypoints = findKeypoints(dogs);
+    cv::Mat vis;
+    gray.convertTo(vis, CV_8U, 255.0);
+    cv::cvtColor(vis, vis, cv::COLOR_GRAY2BGR);
 
-        Mat vis;
-        gray.convertTo(vis, CV_8U, 255.0);
-        cvtColor(vis, vis, COLOR_GRAY2BGR);
+    for (const auto& pt : keypoints) {
+    float angle = computeOrientation(scale_space[2], pt.x, pt.y);
+    auto desc = extractDescriptor(scale_space[2], pt.x, pt.y, angle);
 
-        for (const auto& pt : keypoints) {
-            float angle = computeOrientation(scale_space[2], pt.x, pt.y);
-            auto desc = extractDescriptor(scale_space[2], pt.x, pt.y, angle);
-            if (!desc.empty()) {
-                circle(vis, pt, 2, Scalar(0, 0, 255), -1);
+        if (!desc.empty()) {
+            circle(vis, pt, 2, Scalar(0, 0, 255), -1);
+
+            // Print descriptor
+            cout << "Keypoint at (" << pt.x << ", " << pt.y << ") - Descriptor:" << endl;
+            for (int i = 0; i < desc.size(); ++i) {
+                cout << fixed << setprecision(3) << desc[i] << " ";
+                if ((i + 1) % 16 == 0) cout << endl;  // 128 dims in 8x16 rows
             }
+            cout << endl << "------------------------------" << endl;
         }
-
-        imshow("SIFT Keypoints", vis);
-        if (waitKey(1) == 27) break; // ESC to exit
     }
 
-    cap.release();
-    destroyAllWindows();
+    cv::imshow("SIFT Keypoints", vis);
+    cv::waitKey(0);  // <-- keep window open
     return 0;
 }
+
