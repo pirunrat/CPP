@@ -1,0 +1,3 @@
+/home/user/Desktop/CPP/Cmake/CMakeFiles/hello.dir
+/home/user/Desktop/CPP/Cmake/CMakeFiles/edit_cache.dir
+/home/user/Desktop/CPP/Cmake/CMakeFiles/rebuild_cache.dir

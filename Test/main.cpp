@@ -1,49 +1,86 @@
 #include <opencv2/opencv.hpp>
 #include <iostream>
-
-using namespace cv;
-
-// Binary threshold function that converts to grayscale if needed
-void BinaryThreshold(Mat &image) {
-    // Convert to grayscale if not already
-    if (image.channels() != 1) {
-        cvtColor(image, image, COLOR_BGR2GRAY);
-    }
-
-    // Apply manual binary threshold
-    for (int i = 0; i < image.rows; ++i) {
-        for (int j = 0; j < image.cols; ++j) {
-            uchar &pixel = image.at<uchar>(i, j);
-            pixel = (pixel > 128) ? 255 : 0;
-        }
-    }
-}
+#include <vector>
+#include <sys/socket.h>
+#include <arpa/inet.h>
+#include <unistd.h>
 
 int main() {
-    // Open webcam using V4L2 backend
-    VideoCapture cap(0, cv::CAP_V4L2);
-    cap.set(CAP_PROP_FRAME_WIDTH, 640);
-    cap.set(CAP_PROP_FRAME_HEIGHT, 480);
-    cap.set(CAP_PROP_BUFFERSIZE, 1);
-
+    // Open webcam
+    std::cout << "🎥 Trying to open webcam...\n";
+    cv::VideoCapture cap(0);
     if (!cap.isOpened()) {
-        std::cerr << "Cannot open camera\n";
+        std::cerr << "❌ Webcam could not be opened.\n";
+        return -1;
+    }
+    std::cout << "✅ Webcam opened successfully.\n";
+
+    // Create TCP socket
+    int sock = socket(AF_INET, SOCK_STREAM, 0);
+    if (sock < 0) {
+        std::cerr << "❌ Socket creation failed.\n";
         return -1;
     }
 
-    Mat frame;
+    // Set up server address
+    sockaddr_in server_addr{};
+    server_addr.sin_family = AF_INET;
+    server_addr.sin_port = htons(5001);  // Port must match Python
+    inet_pton(AF_INET, "127.0.0.1", &server_addr.sin_addr);
+
+    // Connect to Python receiver
+    std::cout << "🔌 Connecting to Python receiver...\n";
+    if (connect(sock, (sockaddr*)&server_addr, sizeof(server_addr)) < 0) {
+        perror("❌ Connect failed");
+        return -1;
+    }
+    std::cout << "✅ Connected to Python receiver.\n";
+
     while (true) {
-        cap.read(frame);
-        if (frame.empty()) break;
+        // Capture frame
+        cv::Mat frame;
+        cap >> frame;
+        if (frame.empty()) {
+            std::cerr << "⚠️ Empty frame captured.\n";
+            continue;
+        }
 
-        BinaryThreshold(frame);  // Convert to binary threshold
+        // Resize for performance
+        cv::resize(frame, frame, cv::Size(320, 240));
 
-        imshow("Binary Webcam", frame);  // Show thresholded image
+        // Encode as JPEG
+        std::vector<uchar> buf;
+        if (!cv::imencode(".jpg", frame, buf)) {
+            std::cerr << "⚠️ Failed to encode frame.\n";
+            continue;
+        }
 
-        if (waitKey(1) == 27) break;  // ESC to exit
+        // Send frame size in network byte order (big-endian)
+        int size = buf.size();
+        uint32_t be_size = htonl(size);  // 🔧 Big-endian conversion
+
+        std::cout << "📤 Sending frame of size: " << size << " bytes\n";
+
+        // Send frame size
+        if (send(sock, &be_size, sizeof(be_size), 0) != sizeof(be_size)) {
+            std::cerr << "❌ Failed to send frame size.\n";
+            break;
+        }
+
+        // Send frame data
+        if (send(sock, buf.data(), size, 0) != size) {
+            std::cerr << "❌ Failed to send frame data.\n";
+            break;
+        }
+
+        std::cout << "✅ Frame sent.\n";
+
+        if (cv::waitKey(30) == 27) {  // ESC to stop
+            std::cout << "🚪 ESC pressed. Exiting...\n";
+            break;
+        }
     }
 
-    cap.release();
-    destroyAllWindows();
+    close(sock);
     return 0;
 }
